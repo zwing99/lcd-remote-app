@@ -7,22 +7,26 @@ from contextlib import asynccontextmanager
 from fastapi.templating import Jinja2Templates
 from fastapi import Request
 import textwrap
+import random
+from phrases import PHRASES
 
 class DisplayText(BaseModel):
     text: str
+    textColor: str = "#ffffff"  # Default white
+    backgroundColor: str = "#000000"  # Default black
 
 # Global variable to control scrolling
 current_scroll_task = None
 
-async def scroll_text(text: str):
+async def scroll_text(text: str, text_color: str = "#ffffff", bg_color: str = "#000000"):
     """Scroll text vertically like Star Wars credits on the graphical LCD"""
     try:
         # Configuration for the display
         DISPLAY_WIDTH = 320  # pixels (landscape mode)
         FONT_SIZE = 28  # Increased from 14 for better visibility
         LINE_SPACING = 6
-        SCROLL_SPEED = 4  # Reduced to 75% of previous (5 * 0.75 = 3.75 ≈ 4)
-        FRAME_DELAY = 0.025  # Adjusted for smoother scrolling
+        SCROLL_SPEED = 3  # Increased 50% faster (2 * 1.5 = 3)
+        FRAME_DELAY = 0.01  # Faster refresh rate for smoothness
         
         # Calculate max chars per line based on font size
         # With 28pt font, approximately 12-15 characters fit per line
@@ -57,7 +61,9 @@ async def scroll_text(text: str):
                     display_lines,
                     y_offset=y_offset,
                     font_size=FONT_SIZE,
-                    line_spacing=LINE_SPACING
+                    line_spacing=LINE_SPACING,
+                    text_color=text_color,
+                    bg_color=bg_color
                 )
                 await asyncio.sleep(FRAME_DELAY)
             
@@ -66,7 +72,7 @@ async def scroll_text(text: str):
         
     except asyncio.CancelledError:
         # Task was cancelled, clean up
-        waveshare_lcd.clear()
+        waveshare_lcd.clear(bg_color="#000000")
         raise
 
 @asynccontextmanager
@@ -96,9 +102,17 @@ async def display_text(data: DisplayText, background_tasks: BackgroundTasks):
         except asyncio.CancelledError:
             pass
     
-    # Always scroll the text (Star Wars style)
-    current_scroll_task = asyncio.create_task(scroll_text(data.text))
+    # Always scroll the text (Star Wars style) with custom colors
+    current_scroll_task = asyncio.create_task(
+        scroll_text(data.text, data.textColor, data.backgroundColor)
+    )
     return {"status": "success", "scrolling": True}
+
+@app.get("/random-phrase")
+async def get_random_phrase():
+    """Get a random phrase with emoji"""
+    phrase = random.choice(PHRASES)
+    return {"phrase": phrase}
 
 if __name__ == "__main__":
     import uvicorn

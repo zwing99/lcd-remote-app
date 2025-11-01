@@ -87,6 +87,52 @@
             font-size: 13px;
             margin-top: 8px;
         }
+        .color-controls {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 2px solid #e0e0e0;
+        }
+        .color-group {
+            display: flex;
+            flex-direction: column;
+        }
+        .color-group label {
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #333;
+        }
+        .color-picker-row {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+        input[type="color"] {
+            width: 50px;
+            height: 50px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: border-color 0.2s;
+        }
+        input[type="color"]:hover {
+            border-color: #667eea;
+        }
+        input[type="text"].hex-input {
+            flex: 1;
+            padding: 10px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            transition: border-color 0.2s;
+        }
+        input[type="text"].hex-input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
         #status {
             margin-top: 15px;
             padding: 15px;
@@ -121,6 +167,28 @@
             color: #0c5460;
             border: 1px solid #bee5eb;
         }
+        
+        /* Mobile responsive styles */
+        @media (max-width: 600px) {
+            body {
+                padding: 10px;
+            }
+            .container {
+                padding: 20px;
+                border-radius: 10px;
+            }
+            h1 {
+                font-size: 24px;
+            }
+            .color-controls {
+                grid-template-columns: 1fr;
+                gap: 15px;
+            }
+            input[type="color"] {
+                width: 45px;
+                height: 45px;
+            }
+        }
     </style>
 </head>
 <body>
@@ -129,17 +197,91 @@
         <p class="subtitle">Send scrolling text to your LED display</p>
         <form id="displayForm">
             <label for="text">Your Message</label>
-            <textarea id="text" name="text" placeholder="Type something amazing...&#10;&#10;Try line breaks for&#10;multiple paragraphs!"></textarea>
-            <div class="info">💡 Text will scroll smoothly from bottom to top, then loop. Add line breaks for better formatting!</div>
+            <textarea id="text" name="text" placeholder="Type something amazing...&#10;&#10;Try emojis like 🚀 ✨ 💡 🎉&#10;or line breaks!"></textarea>
+            <div class="info">💡 Text will scroll smoothly from bottom to top, then loop. Add emojis, line breaks, and custom colors!</div>
+            
+            <div class="color-controls">
+                <div class="color-group">
+                    <label for="textColor">📝 Text Color</label>
+                    <div class="color-picker-row">
+                        <input type="color" id="textColor" name="textColor" value="#ffffff">
+                        <input type="text" class="hex-input" id="textHex" placeholder="#ffffff" value="ffffff">
+                    </div>
+                </div>
+                <div class="color-group">
+                    <label for="bgColor">🎨 Background Color</label>
+                    <div class="color-picker-row">
+                        <input type="color" id="bgColor" name="bgColor" value="#000000">
+                        <input type="text" class="hex-input" id="bgHex" placeholder="#000000" value="000000">
+                    </div>
+                </div>
+            </div>
+            
+            <div class="info">
+                ✨ <strong>Emoji Examples:</strong> 🚀 🎉 💡 ⭐ 🌟 💫 🎊 🎈 👍 ❤️ 🔥 💯
+            </div>
+            
             <button type="submit" id="submitBtn">🚀 Send to Display</button>
+            <button type="button" id="randomBtn" style="margin-top: 10px; background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">🎲 Random Phrase</button>
         </form>
-    <div id="status"></div>
+        <div id="status"></div>
     
     <script>
+        // Color picker synchronization
+        const textColorPicker = document.getElementById('textColor');
+        const textHex = document.getElementById('textHex');
+        const bgColorPicker = document.getElementById('bgColor');
+        const bgHex = document.getElementById('bgHex');
+        
+        // Sync color picker to hex input
+        textColorPicker.addEventListener('input', (e) => {
+            textHex.value = e.target.value.substring(1);
+        });
+        
+        bgColorPicker.addEventListener('input', (e) => {
+            bgHex.value = e.target.value.substring(1);
+        });
+        
+        // Sync hex input to color picker (with validation)
+        textHex.addEventListener('input', (e) => {
+            const hex = e.target.value.replace('#', '');
+            if (/^[0-9A-F]{6}$/i.test(hex)) {
+                textColorPicker.value = '#' + hex;
+            }
+        });
+        
+        bgHex.addEventListener('input', (e) => {
+            const hex = e.target.value.replace('#', '');
+            if (/^[0-9A-F]{6}$/i.test(hex)) {
+                bgColorPicker.value = '#' + hex;
+            }
+        });
+        
+        // Random phrase button
+        document.getElementById('randomBtn').addEventListener('click', async () => {
+            try {
+                const response = await fetch('/random-phrase');
+                const data = await response.json();
+                document.getElementById('text').value = data.phrase;
+            } catch (error) {
+                console.error('Error fetching random phrase:', error);
+            }
+        });
+        
+        // Form submission
         document.getElementById('displayForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             const text = document.getElementById('text').value;
+            const textColor = textColorPicker.value;
+            const bgColor = bgColorPicker.value;
             const statusDiv = document.getElementById('status');
+            
+            if (!text.trim()) {
+                statusDiv.className = 'error';
+                statusDiv.textContent = '⚠️ Please enter some text!';
+                statusDiv.style.display = 'block';
+                return;
+            }
             
             try {
                 const response = await fetch('/display', {
@@ -147,22 +289,27 @@
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({ text: text })
+                    body: JSON.stringify({ 
+                        text: text,
+                        textColor: textColor,
+                        backgroundColor: bgColor
+                    })
                 });
                 
                 const data = await response.json();
                 
                 if (response.ok) {
                     statusDiv.className = 'success';
-                    statusDiv.textContent = 'Successfully sent to display!';
+                    statusDiv.textContent = '✅ Successfully sent to display!';
                 } else {
                     statusDiv.className = 'error';
-                    statusDiv.textContent = 'Error: ' + JSON.stringify(data);
+                    statusDiv.textContent = '❌ Error: ' + (data.detail || JSON.stringify(data));
                 }
             } catch (error) {
                 statusDiv.className = 'error';
-                statusDiv.textContent = 'Error: ' + error.message;
+                statusDiv.textContent = '❌ Error: ' + error.message;
             }
+            statusDiv.style.display = 'block';
         });
     </script>
 </body>
