@@ -1,0 +1,15 @@
+services:
+  lcd-remote-app:
+    init: true
+    image: ghcr.io/astral-sh/uv:python3.13-bookworm
+    container_name: lcd-remote-app
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+    working_dir: /app
+    command: uv run uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    restart: always
+    privileged: true
+    devices:
+      - /dev/i2c-1:/dev/i2c-1
