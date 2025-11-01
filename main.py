@@ -1,4 +1,4 @@
-import LCD1602
+import waveshare_lcd
 import asyncio
 from fastapi import FastAPI, BackgroundTasks
 from fastapi.responses import HTMLResponse
@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from contextlib import asynccontextmanager
 from fastapi.templating import Jinja2Templates
 from fastapi import Request
+import textwrap
 
 class DisplayText(BaseModel):
     text: str
@@ -14,85 +15,67 @@ class DisplayText(BaseModel):
 current_scroll_task = None
 
 async def scroll_text(text: str):
-    """Scroll text vertically like Star Wars credits"""
+    """Scroll text vertically like Star Wars credits on the graphical LCD"""
     try:
+        # Configuration for the display
+        DISPLAY_WIDTH = 320  # pixels (landscape mode)
+        FONT_SIZE = 28  # Increased from 14 for better visibility
+        LINE_SPACING = 6
+        SCROLL_SPEED = 4  # Reduced to 75% of previous (5 * 0.75 = 3.75 ≈ 4)
+        FRAME_DELAY = 0.025  # Adjusted for smoother scrolling
+        
+        # Calculate max chars per line based on font size
+        # With 28pt font, approximately 12-15 characters fit per line
+        MAX_CHARS_PER_LINE = 18
+        
         # Split text into lines, honoring existing newlines
         raw_lines = text.split('\n')
         
-        # Break each line into 16-char chunks at word boundaries
+        # Wrap long lines to fit display width
         display_lines = []
         for raw_line in raw_lines:
             if not raw_line.strip():
                 # Preserve empty lines
                 display_lines.append("")
-                continue
-                
-            # Break line into words
-            words = raw_line.split()
-            current_line = ""
-            
-            for word in words:
-                # If adding this word would exceed 16 chars
-                if len(current_line) + len(word) + (1 if current_line else 0) > 16:
-                    # If word itself is longer than 16, split it
-                    if len(word) > 16:
-                        # Add current line if it has content
-                        if current_line:
-                            display_lines.append(current_line)
-                            current_line = ""
-                        # Split the long word
-                        while len(word) > 16:
-                            display_lines.append(word[:16])
-                            word = word[16:]
-                        current_line = word
-                    else:
-                        # Save current line and start new one
-                        if current_line:
-                            display_lines.append(current_line)
-                        current_line = word
-                else:
-                    # Add word to current line
-                    if current_line:
-                        current_line += " " + word
-                    else:
-                        current_line = word
-            
-            # Add any remaining text
-            if current_line:
-                display_lines.append(current_line)
+            else:
+                # Wrap line to fit within display width
+                wrapped = textwrap.wrap(raw_line, width=MAX_CHARS_PER_LINE, break_long_words=True)
+                display_lines.extend(wrapped if wrapped else [""])
         
-        # Scroll through all lines continuously
-        LCD1602.clear()
+        # Calculate total scroll distance
+        # Start with all text below screen, end with all text above screen
+        line_height = FONT_SIZE + LINE_SPACING
+        total_height = len(display_lines) * line_height
+        start_offset = 240  # Start below screen (display height in landscape)
+        end_offset = -total_height - 50  # End above screen (less padding)
+        
+        # Scroll continuously
         while True:
-            # Start with blank line, then scroll through all the lines
-            # This makes text start from bottom line and scroll up
-            for i in range(-1, len(display_lines)):
-                # Display two lines at a time
-                line1 = display_lines[i] if i >= 0 and i < len(display_lines) else ""
-                line2 = display_lines[i + 1] if i + 1 >= 0 and i + 1 < len(display_lines) else ""
-                
-                LCD1602.write(0, 0, line1[:16].ljust(16))
-                LCD1602.write(0, 1, line2[:16].ljust(16))
-                
-                await asyncio.sleep(0.8)  # Pause between scrolls
+            # Scroll from bottom to top
+            for y_offset in range(start_offset, end_offset, -SCROLL_SPEED):
+                waveshare_lcd.draw_text_screen(
+                    display_lines,
+                    y_offset=y_offset,
+                    font_size=FONT_SIZE,
+                    line_spacing=LINE_SPACING
+                )
+                await asyncio.sleep(FRAME_DELAY)
             
-            # Add a blank line separator before repeating
-            LCD1602.write(0, 0, "".ljust(16))
-            LCD1602.write(0, 1, "".ljust(16))
-            await asyncio.sleep(0.8)
+            # Brief pause before repeating
+            await asyncio.sleep(0.5)
         
     except asyncio.CancelledError:
         # Task was cancelled, clean up
-        LCD1602.clear()
+        waveshare_lcd.clear()
         raise
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup: Initialize LCD
-    LCD1602.init(0x27, 1)
+    waveshare_lcd.init()
     yield
     # Shutdown: Clear LCD
-    LCD1602.clear()
+    waveshare_lcd.clear()
 
 app = FastAPI(lifespan=lifespan)
 templates = Jinja2Templates(directory="templates")

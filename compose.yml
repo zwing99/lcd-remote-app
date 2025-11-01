@@ -12,4 +12,5 @@ services:
     restart: always
     privileged: true
     devices:
-      - /dev/i2c-1:/dev/i2c-1
+      - /dev/spidev0.0:/dev/spidev0.0
+      - /dev/gpiomem:/dev/gpiomem

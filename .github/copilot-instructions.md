@@ -1,25 +1,26 @@
 # LCD Remote App - AI Coding Agent Instructions
 
 ## Project Overview
-A FastAPI web service that controls a 16x2 I2C LCD display on a Raspberry Pi. Users send text via a web interface, which scrolls vertically "Star Wars credits" style on the physical LCD.
+A FastAPI web service that controls a **Waveshare 2-inch Mini LCD display** (240x320 pixels, ST7789VW controller) on a Raspberry Pi. Users send text via a web interface, which scrolls vertically "Star Wars credits" style on the physical LCD.
 
 ## Architecture
 
 ### Core Components
 - **`main.py`**: FastAPI application with async scrolling logic
   - Uses global `current_scroll_task` to manage single active scroll task
-  - `scroll_text()` breaks text into 16-char lines at word boundaries, scrolls continuously
+  - `scroll_text()` wraps text to ~35 chars/line, scrolls pixel-by-pixel continuously
   - Lifespan events handle LCD initialization/cleanup
-- **`LCD1602.py`**: Low-level I2C LCD driver using smbus2
-  - Communicates with LCD at address 0x27 via I2C bus 1
-  - 4-bit mode protocol (sends commands/data in two 4-bit nibbles)
+- **`waveshare_lcd.py`**: ST7789 display driver using luma.lcd library
+  - Communicates via SPI (port 0, device 0)
+  - Uses GPIO 25 (DC), GPIO 27 (RST) for control signals
+  - Renders text graphically using PIL/Pillow with TrueType fonts
 - **`templates/index.html`**: Single-page web UI with textarea and status feedback
 
 ### Data Flow
 1. User submits text via HTML form → POST `/display`
 2. Cancel any running scroll task, create new task with `asyncio.create_task()`
-3. `scroll_text()` loops indefinitely: splits text into 16-char chunks, displays 2 lines at a time, shifts every 0.8s
-4. LCD updated via `LCD1602.write(x, y, text)` with coordinates (0-15, 0-1)
+3. `scroll_text()` loops indefinitely: wraps text to display width, scrolls from bottom to top pixel-by-pixel
+4. LCD updated via `waveshare_lcd.draw_text_screen()` which renders text using PIL ImageDraw
 
 ## Development Workflow
 
@@ -28,7 +29,7 @@ A FastAPI web service that controls a 16x2 I2C LCD display on a Raspberry Pi. Us
 docker compose up
 ```
 - Uses `uv` package manager (no need for separate pip/venv)
-- Requires `privileged: true` and `/dev/i2c-1` device access for I2C
+- Requires `privileged: true` and `/dev/spidev0.0`, `/dev/gpiomem` device access for SPI
 - Auto-reload enabled via `uvicorn --reload`
 
 ### Running Without Docker
@@ -38,9 +39,9 @@ uv run uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 
 ### Testing LCD Hardware
 ```bash
-uv run python LCD1602.py
+uv run python waveshare_lcd.py
 ```
-Displays "Hello world!" test message. Useful for debugging I2C connectivity.
+Displays centered "Hello World!" test message and scrolling demo. Useful for debugging SPI connectivity.
 
 ## Critical Patterns
 
@@ -57,36 +58,45 @@ Displays "Hello world!" test message. Useful for debugging I2C connectivity.
   ```
 
 ### Text Processing
-- LCD is 16 chars wide × 2 lines
-- Word wrapping breaks at spaces to avoid mid-word splits
-- Long words (>16 chars) split with hard breaks
-- Empty lines preserved for paragraph spacing
-- Each line padded to 16 chars with `ljust(16)` to clear previous text
+- LCD is 240px wide × 320px tall (graphical display, not character-based)
+- Text wrapped using `textwrap.wrap()` to ~35 chars/line (font-dependent)
+- Font size: 14pt by default (configurable)
+- Scrolling: pixel-by-pixel from bottom (y=320) to top (y=-total_height)
+- Frame delay: 0.03s between updates (smooth 33fps scrolling)
 
-### I2C Hardware Constraints
-- **Must run on Raspberry Pi** or system with I2C bus
-- LCD address: `0x27`, bus: `1`
-- Requires root/privileged access for `/dev/i2c-1`
-- Commands sent in 4-bit mode with enable pulse timing (2ms delays critical)
+### SPI Hardware Constraints
+- **Must run on Raspberry Pi** or system with SPI bus
+- SPI device: `/dev/spidev0.0` (port 0, device 0)
+- GPIO pins: DC=25, RST=27, (optional BL=24 for backlight)
+- Requires SPI enabled in `/boot/config.txt`: `dtparam=spi=on`
+- Needs root/privileged access or user in `spi`/`gpio` groups
+- Display uses BGR color order (set in st7789 device init)
 
 ## Dependencies & Tools
 - **uv**: Zero-config Python package manager (replaces pip/venv)
 - **FastAPI**: Web framework with async support
-- **smbus2**: Pure Python I2C library (no system dependencies)
+- **luma.lcd**: Device driver library for ST7789 SPI displays
+- **Pillow (PIL)**: Image processing and text rendering
 - **uvicorn**: ASGI server with hot reload
 
 ## Common Tasks
 
-**Add new LCD function**: Extend `LCD1602.py` with new `send_command()` calls (see init() for command examples)
+**Add new LCD function**: Extend `waveshare_lcd.py` with new canvas drawing operations using PIL ImageDraw
 
-**Change scroll speed**: Modify `await asyncio.sleep(0.8)` in `scroll_text()`
+**Change scroll speed**: Modify `SCROLL_SPEED` (pixels/frame) or `FRAME_DELAY` (seconds) in `scroll_text()`
+
+**Change font**: Edit `get_font()` in `waveshare_lcd.py` to use different TrueType font paths
+
+**Adjust display orientation**: Change `rotate` parameter (0/1/2/3) in `st7789()` device initialization
 
 **Add new endpoint**: Follow FastAPI patterns in `main.py` (use async def, Pydantic models)
 
 **Modify UI**: Edit `templates/index.html` (single-file Jinja2 template)
 
 ## Gotchas
-- Global `BUS` in `LCD1602.py` initialized once per process (not thread-safe)
+- Display initialized once during lifespan startup - not thread-safe
 - Scroll task runs indefinitely until cancelled - never returns normally
-- LCD initialization commands (`0x33`, `0x32`, etc.) are timing-sensitive - don't modify delays
+- Font rendering requires TrueType fonts or falls back to bitmap default
+- SPI bus speed (40MHz) and transfer size (4096 bytes) tuned for performance - adjust if display glitches
 - Container needs `init: true` to properly handle signals and zombie processes
+- BGR color order specific to Waveshare hardware - other ST7789 displays may need `bgr=False`
