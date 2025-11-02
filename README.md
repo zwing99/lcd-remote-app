@@ -43,7 +43,7 @@ sudo reboot
 docker compose up
 ```
 
-The service will be available at `http://localhost:8000`
+The service will be available at `http://localhost` (port 80)
 
 ### Without Docker
 
@@ -65,11 +65,14 @@ This will display a test message and scrolling demo.
 
 ## Features
 
-- **Web Interface**: Simple form to submit text for display
+- **Web Interface**: Clean, responsive form to submit text for display
 - **Star Wars Credits Effect**: Smooth vertical scrolling with pixel-level control
-- **Auto Text Wrapping**: Intelligently wraps long lines (≈35 chars per line)
+- **Color Customization**: Pick custom text and background colors
+- **Emoji Support**: Full emoji support with intelligent rendering
+- **Auto Text Wrapping**: Intelligently wraps long lines
 - **Continuous Loop**: Text scrolls continuously until new text is submitted
 - **Task Cancellation**: Submitting new text immediately replaces current display
+- **Static Assets**: Favicon and CSS bundled for complete offline experience
 
 ## Architecture
 
@@ -79,16 +82,16 @@ This will display a test message and scrolling demo.
 
 ## Configuration
 
+Edit `main.py` to adjust:
+- Font size (`FONT_SIZE = 28`)
+- Scroll speed (`SCROLL_SPEED = 3` pixels/frame)
+- Frame delay (`FRAME_DELAY = 0.01` seconds)
+- Characters per line (`MAX_CHARS_PER_LINE = 18`)
+
 Edit `waveshare_lcd.py` to adjust:
 - GPIO pins (if using custom wiring)
 - Display rotation (`rotate` parameter: 0/1/2/3)
 - Color mode and BGR order
-
-Edit `main.py` to adjust:
-- Font size (`FONT_SIZE = 14`)
-- Scroll speed (`SCROLL_SPEED = 2` pixels/frame)
-- Frame delay (`FRAME_DELAY = 0.03` seconds)
-- Characters per line (`MAX_CHARS_PER_LINE = 35`)
 
 ## Dependencies
 

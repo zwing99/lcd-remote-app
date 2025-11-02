@@ -7,14 +7,16 @@ A FastAPI web service that controls a **Waveshare 2-inch Mini LCD display** (240
 
 ### Core Components
 - **`main.py`**: FastAPI application with async scrolling logic
+  - Mounts static files at `/static` (favicon, CSS, assets)
   - Uses global `current_scroll_task` to manage single active scroll task
-  - `scroll_text()` wraps text to ~35 chars/line, scrolls pixel-by-pixel continuously
+  - `scroll_text()` wraps text to ~18 chars/line, scrolls pixel-by-pixel continuously
   - Lifespan events handle LCD initialization/cleanup
 - **`waveshare_lcd.py`**: ST7789 display driver using luma.lcd library
   - Communicates via SPI (port 0, device 0)
   - Uses GPIO 25 (DC), GPIO 27 (RST) for control signals
   - Renders text graphically using PIL/Pillow with TrueType fonts
-- **`templates/index.html`**: Single-page web UI with textarea and status feedback
+- **`templates/index.html`**: Single-page web UI with textarea, color pickers, and status feedback
+- **`static/favicon.svg`**: Branded SVG favicon for browser tab
 
 ### Data Flow
 1. User submits text via HTML form → POST `/display`
@@ -29,8 +31,11 @@ A FastAPI web service that controls a **Waveshare 2-inch Mini LCD display** (240
 docker compose up
 ```
 - Uses `uv` package manager (no need for separate pip/venv)
+- Creates named volume `venv_cache` for persistent `.venv` caching
+- Excludes `.git` from bind mount to prevent performance issues
 - Requires `privileged: true` and `/dev/spidev0.0`, `/dev/gpiomem` device access for SPI
 - Auto-reload enabled via `uvicorn --reload`
+- Service available at `http://localhost` (port 80 mapped to container port 8000)
 
 ### Running Without Docker
 ```bash
@@ -59,10 +64,10 @@ Displays centered "Hello World!" test message and scrolling demo. Useful for deb
 
 ### Text Processing
 - LCD is 240px wide × 320px tall (graphical display, not character-based)
-- Text wrapped using `textwrap.wrap()` to ~35 chars/line (font-dependent)
-- Font size: 14pt by default (configurable)
+- Text wrapped using `textwrap.wrap()` to ~18 chars/line (font-dependent)
+- Font size: 28pt by default (configurable)
 - Scrolling: pixel-by-pixel from bottom (y=320) to top (y=-total_height)
-- Frame delay: 0.03s between updates (smooth 33fps scrolling)
+- Frame delay: 0.01s between updates (100fps scrolling, ~3 pixels per frame)
 
 ### SPI Hardware Constraints
 - **Must run on Raspberry Pi** or system with SPI bus
