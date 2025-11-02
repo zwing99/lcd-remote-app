@@ -31,5 +31,4 @@ dependencies = [
     "spidev",
     "numpy",
     "gpiozero",
-    "pilmoji>=2.0.4",
 ]

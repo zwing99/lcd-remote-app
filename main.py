@@ -1,4 +1,5 @@
 import waveshare_lcd
+import text_renderer
 import asyncio
 from fastapi import FastAPI, BackgroundTasks
 from fastapi.responses import HTMLResponse
@@ -7,7 +8,6 @@ from pydantic import BaseModel
 from contextlib import asynccontextmanager
 from fastapi.templating import Jinja2Templates
 from fastapi import Request
-import textwrap
 import random
 from phrases import PHRASES
 
@@ -20,57 +20,58 @@ class DisplayText(BaseModel):
 current_scroll_task = None
 
 async def scroll_text(text: str, text_color: str = "#ffffff", bg_color: str = "#000000"):
-    """Scroll text vertically like Star Wars credits on the graphical LCD"""
+    """Scroll text vertically like Star Wars credits on the graphical LCD with pre-rendered image"""
     try:
-        # Configuration for the display
+        # Configuration for the display (already in landscape: 320x240)
         DISPLAY_WIDTH = 320  # pixels (landscape mode)
-        FONT_SIZE = 28  # Increased from 14 for better visibility
+        DISPLAY_HEIGHT = 240  # pixels (landscape mode)
+        FONT_SIZE = 28
         LINE_SPACING = 6
-        SCROLL_SPEED = 3  # Increased 50% faster (2 * 1.5 = 3)
-        FRAME_DELAY = 0.01  # Faster refresh rate for smoothness
-        
-        # Calculate max chars per line based on font size
-        # With 28pt font, approximately 12-15 characters fit per line
+        SCROLL_SPEED = 3
+        FRAME_DELAY = 0.01
+        # Note: MAX_CHARS_PER_LINE is a reference value. Actual wrapping uses pixel width
+        # to properly handle emoji (which take ~3x the width of regular characters).
+        # See text_renderer.TEXT_MARGIN_PX constant to adjust margins for emoji.
         MAX_CHARS_PER_LINE = 18
         
-        # Split text into lines, honoring existing newlines
-        raw_lines = text.split('\n')
+        # PRE-RENDER: Create one tall image with all the text using text_renderer module
+        full_image = text_renderer.create_scrollable_text_image(
+            text=text,
+            display_width=DISPLAY_WIDTH,
+            font_size=FONT_SIZE,
+            line_spacing=LINE_SPACING,
+            text_color=text_color,
+            bg_color=bg_color,
+            max_chars_per_line=MAX_CHARS_PER_LINE
+        )
         
-        # Wrap long lines to fit display width
-        display_lines = []
-        for raw_line in raw_lines:
-            if not raw_line.strip():
-                # Preserve empty lines
-                display_lines.append("")
-            else:
-                # Wrap line to fit within display width
-                wrapped = textwrap.wrap(raw_line, width=MAX_CHARS_PER_LINE, break_long_words=True)
-                display_lines.extend(wrapped if wrapped else [""])
+        total_text_height = full_image.height
         
-        # Calculate total scroll distance
-        # Start with all text below screen, end with all text above screen
-        line_height = FONT_SIZE + LINE_SPACING
-        total_height = len(display_lines) * line_height
-        start_offset = 240  # Start below screen (display height in landscape)
-        end_offset = -total_height - 50  # End above screen (less padding)
+        # SCROLL: Loop through the pre-rendered image
+        y_position = -DISPLAY_HEIGHT  # Start with text below screen
         
-        # Scroll continuously
         while True:
-            # Scroll from bottom to top
-            for y_offset in range(start_offset, end_offset, -SCROLL_SPEED):
-                waveshare_lcd.draw_text_screen(
-                    display_lines,
-                    y_offset=y_offset,
-                    font_size=FONT_SIZE,
-                    line_spacing=LINE_SPACING,
-                    text_color=text_color,
-                    bg_color=bg_color
-                )
-                await asyncio.sleep(FRAME_DELAY)
+            # Create display frame by cropping the tall image
+            frame = text_renderer.create_scroll_frame(
+                full_image=full_image,
+                y_position=y_position,
+                display_width=DISPLAY_WIDTH,
+                display_height=DISPLAY_HEIGHT,
+                bg_color=bg_color
+            )
             
-            # Brief pause before repeating
-            await asyncio.sleep(0.5)
-        
+            # Display the frame (no rotation needed - display is already landscape)
+            waveshare_lcd.display.display(frame)
+            
+            # Move position
+            y_position += SCROLL_SPEED
+            
+            # Loop back when text has scrolled off completely
+            if y_position >= total_text_height + DISPLAY_HEIGHT:
+                y_position = -DISPLAY_HEIGHT
+            
+            await asyncio.sleep(FRAME_DELAY)
+            
     except asyncio.CancelledError:
         # Task was cancelled, clean up
         waveshare_lcd.clear(bg_color="#000000")
