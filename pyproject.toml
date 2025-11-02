@@ -1,9 +1,26 @@
 [project]
 name = "lcd-remote-app"
 version = "0.1.0"
-description = "Add your description here"
+description = "FastAPI web service for controlling a Waveshare 2-inch LCD display with scrolling text in Star Wars credits style"
 readme = "README.md"
 requires-python = ">=3.13"
+license = {text = "MIT"}
+authors = [
+    {name = "LCD Remote App Contributors"}
+]
+keywords = ["lcd", "display", "fastapi", "waveshare", "raspberry-pi", "scrolling-text"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Web Environment",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Natural Language :: English",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Home Automation",
+    "Topic :: System :: Hardware",
+]
 dependencies = [
     "fastapi",
     "jinja2",
