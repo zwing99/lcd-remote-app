@@ -11,7 +11,8 @@ services:
       - /app/.git
       - /usr/share/fonts:/usr/share/fonts:ro
     working_dir: /app
-    command: uv run uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    #command: uv run uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    command: uv run uvicorn main:app --host 0.0.0.0 --port 8000
     restart: always
     privileged: true
     devices:

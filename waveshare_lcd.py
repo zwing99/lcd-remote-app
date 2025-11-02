@@ -9,82 +9,178 @@ from luma.core.render import canvas
 from luma.lcd.device import st7789
 import RPi.GPIO as GPIO
 
-# Global display instance
-display = None
-backlight_pwm = None
+# Default GPIO pins and constants
 BACKLIGHT_PIN = 18  # GPIO 18 for backlight control (BCM2835 column in wiring table)
-CS_PIN = 8  # Default CE0 for SPI
+DC_PIN = 25
+RST_PIN = 27
 
+
+class LcdController:
+    """Singleton controller for the Waveshare ST7789 display.
+
+    Usage:
+      - Use LcdController.get_instance() to get the singleton (will initialize on first call).
+      - Call LcdController.clear_instance() from FastAPI lifespan shutdown to dispose resources.
+
+    Public methods mirror the previous module-level API: init(), clear(), backlight_on(), backlight_off(), set_backlight(), dispose().
+    """
+
+    _instance = None
+
+    def __init__(self):
+        # instance attributes
+        self.display = None
+        self.backlight_pwm = None
+
+    @classmethod
+    def instance(cls):
+        """Return the singleton instance, initializing it on first call."""
+        if cls._instance is None:
+            inst = cls()
+            inst.init()
+            cls._instance = inst
+        return cls._instance
+
+    @classmethod
+    def clear_instance(cls):
+        """Dispose of the singleton and clear the reference (call from FastAPI shutdown)."""
+        if cls._instance is not None:
+            try:
+                cls._instance.dispose()
+            finally:
+                cls._instance = None
+
+    def init(self):
+        """Initialize the ST7789 display via SPI (idempotent)."""
+        if self.display is not None:
+            return
+
+        # Disable GPIO warnings and set BCM numbering
+        GPIO.setwarnings(False)
+        GPIO.setmode(GPIO.BCM)
+
+        # Configure SPI interface
+        serial = spi(
+            port=0,
+            device=0,
+            gpio_DC=DC_PIN,
+            gpio_RST=RST_PIN,
+            bus_speed_hz=40000000,
+            transfer_size=4096,
+        )
+
+        # Create ST7789 device instance (Waveshare 2-inch in landscape)
+        self.display = st7789(
+            serial,
+            width=320,
+            height=240,
+            rotate=0,
+            mode='RGB',
+            bgr=True,
+            h_offset=0,
+            v_offset=0,
+        )
+
+        # Start backlight PWM
+        GPIO.setup(BACKLIGHT_PIN, GPIO.OUT)
+        self.backlight_pwm = GPIO.PWM(BACKLIGHT_PIN, 1000)
+        try:
+            self.backlight_pwm.start(100)
+        except Exception:
+            # If PWM start fails, ensure attribute remains consistent
+            self.backlight_pwm = None
+
+        print(f"Display initialized: {self.display.width}x{self.display.height}")
+        print(f"Backlight: GPIO {BACKLIGHT_PIN} PWM at 100%")
+        print(f"DC: GPIO {DC_PIN}, RST: GPIO {RST_PIN}")
+
+        # Clear display on init
+        self.clear()
+
+    def clear(self, bg_color="#000000"):
+        """Clear the display to specified color."""
+        if self.display:
+            with canvas(self.display) as draw:
+                draw.rectangle(self.display.bounding_box, fill=bg_color)
+
+    def backlight_on(self):
+        """Turn on the backlight (100%)."""
+        if self.backlight_pwm:
+            try:
+                self.backlight_pwm.ChangeDutyCycle(100)
+            except Exception:
+                pass
+
+    def backlight_off(self):
+        """Turn off the backlight (0%)."""
+        if self.backlight_pwm:
+            try:
+                self.backlight_pwm.ChangeDutyCycle(0)
+            except Exception:
+                pass
+
+    def set_backlight(self, brightness):
+        """Set backlight brightness (0-100)."""
+        if self.backlight_pwm:
+            try:
+                self.backlight_pwm.ChangeDutyCycle(max(0, min(100, int(brightness))))
+            except Exception:
+                pass
+
+    def dispose(self):
+        """Cleanly stop PWM, clear display, and cleanup GPIO resources."""
+        # Try to turn display to black first
+        try:
+            if self.display:
+                with canvas(self.display) as draw:
+                    draw.rectangle(self.display.bounding_box, fill="#000000")
+        except Exception:
+            pass
+
+        # Stop PWM
+        try:
+            if self.backlight_pwm:
+                self.backlight_pwm.stop()
+                self.backlight_pwm = None
+                self.backlight_off()
+        except Exception:
+            pass
+
+        # Clear display reference
+        self.display = None
+
+        # Attempt to cleanup GPIO (safe to call multiple times)
+        try:
+            GPIO.cleanup()
+        except Exception:
+            pass
+
+
+# Module-level wrappers for backward compatibility
 def init():
-    """Initialize the ST7789 display via SPI"""
-    global display
-    
-    # Disable GPIO warnings
-    GPIO.setwarnings(False)
-    GPIO.setmode(GPIO.BCM)
-    
-    # Configure SPI interface
-    # For Waveshare 2-inch LCD with ST7789V:
-    # Using BCM2835 pin numbering from wiring table:
-    # - DC = GPIO 25
-    # - RST = GPIO 27
-    # - BL = GPIO 18
-    serial = spi(
-        port=0,
-        device=0,
-        gpio_DC=25,  # DC pin
-        gpio_RST=27,  # RST pin
-        bus_speed_hz=40000000,  # 40MHz as in their example
-        transfer_size=4096
-    )
-    
-    # Create ST7789 device instance
-    # Waveshare 2-inch LCD in landscape mode (320x240)
-    display = st7789(
-        serial,
-        width=320,
-        height=240,
-        rotate=0,  # 0 degrees for horizontal/landscape orientation
-        mode='RGB',
-        bgr=True,  # Waveshare uses BGR color order
-        h_offset=0,
-        v_offset=0
-    )
-    
-    # Turn on backlight using PWM at 100% duty cycle
-    global backlight_pwm
-    GPIO.setup(BACKLIGHT_PIN, GPIO.OUT)
-    backlight_pwm = GPIO.PWM(BACKLIGHT_PIN, 1000)  # 1kHz frequency
-    backlight_pwm.start(100)  # 100% duty cycle for full brightness
-    
-    print(f"Display initialized: {display.width}x{display.height}")
-    print(f"Backlight: GPIO {BACKLIGHT_PIN} PWM at 100%")
-    print(f"DC: GPIO 25, RST: GPIO 27")
-    
-    # Clear display
-    clear()
+    """Initialize the global singleton instance (keeps original API)."""
+    LcdController.instance()
+
 
 def clear(bg_color="#000000"):
-    """Clear the display to specified color"""
-    global display
-    if display:
-        with canvas(display) as draw:
-            draw.rectangle(display.bounding_box, fill=bg_color)
+    LcdController.instance().clear(bg_color)
+
 
 def backlight_on():
-    """Turn on the backlight"""
-    if backlight_pwm:
-        backlight_pwm.ChangeDutyCycle(100)
+    LcdController.instance().backlight_on()
+
 
 def backlight_off():
-    """Turn off the backlight"""
-    if backlight_pwm:
-        backlight_pwm.ChangeDutyCycle(0)
+    LcdController.instance().backlight_off()
+
 
 def set_backlight(brightness):
-    """Set backlight brightness (0-100)"""
-    if backlight_pwm:
-        backlight_pwm.ChangeDutyCycle(max(0, min(100, brightness)))
+    LcdController.instance().set_backlight(brightness)
+
+
+def dispose():
+    """Dispose the singleton and free resources."""
+    LcdController.clear_instance()
 
 
 if __name__ == '__main__':
@@ -93,10 +189,13 @@ if __name__ == '__main__':
     
     print("Initializing display...")
     init()
-    
+
+    lcd = LcdController.instance()
+
     print("Drawing white screen...")
-    with canvas(display) as draw:
-        draw.rectangle(display.bounding_box, fill="white")
+    if lcd.display:
+        with canvas(lcd.display) as draw:
+            draw.rectangle(lcd.display.bounding_box, fill="white")
     
     import time
     time.sleep(2)
@@ -119,7 +218,8 @@ if __name__ == '__main__':
     
     draw.text((80, 100), "Hello\nWorld!", fill='white', font=font)
     
-    display.display(test_img)
+    if lcd.display:
+        lcd.display.display(test_img)
     time.sleep(3)
     
     print("Clearing display...")

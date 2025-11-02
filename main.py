@@ -59,7 +59,11 @@ async def scroll_text(text: str, text_color: str = "#ffffff", bg_color: str = "#
         # SCROLL: Loop through the pre-rendered image
         y_position = -DISPLAY_HEIGHT  # Start with text below screen
         start_time = time.time()
-        
+
+        # Cache LCD instance and display reference once (avoid repeated lookups)
+        lcd = waveshare_lcd.LcdController.instance()
+        display_device = lcd.display if lcd else None
+
         while True:
             # Check if 5 minutes have elapsed
             elapsed_time = time.time() - start_time
@@ -76,9 +80,13 @@ async def scroll_text(text: str, text_color: str = "#ffffff", bg_color: str = "#
                 display_height=DISPLAY_HEIGHT,
                 bg_color=bg_color
             )
-            
             # Display the frame (no rotation needed - display is already landscape)
-            waveshare_lcd.display.display(frame)
+            if display_device:
+                try:
+                    display_device.display(frame)
+                except Exception:
+                    # If display fails, ignore and continue; device may be disposed concurrently
+                    pass
             
             # Move position
             y_position += SCROLL_SPEED
@@ -99,8 +107,8 @@ async def lifespan(app: FastAPI):
     # Startup: Initialize LCD
     waveshare_lcd.init()
     yield
-    # Shutdown: Clear LCD
-    waveshare_lcd.clear()
+    # Shutdown: Clear and dispose LCD resources
+    waveshare_lcd.dispose()
 
 app = FastAPI(lifespan=lifespan)
 templates = Jinja2Templates(directory="templates")
@@ -117,10 +125,19 @@ async def display_text(data: DisplayText, background_tasks: BackgroundTasks):
     # Cancel any existing scroll task
     if current_scroll_task is not None and not current_scroll_task.done():
         current_scroll_task.cancel()
+        # Wait for the task to finish cancelling without directly awaiting the task
         try:
-            await current_scroll_task
-        except asyncio.CancelledError:
-            pass
+            done, pending = await asyncio.wait({current_scroll_task}, return_when=asyncio.ALL_COMPLETED)
+            for fut in done:
+                try:
+                    fut.result()
+                except asyncio.CancelledError:
+                    pass
+                except Exception:
+                    pass
+        except Exception:
+            # Fallback: yield control to event loop
+            await asyncio.sleep(0)
     
     # Always scroll the text (Star Wars style) with custom colors
     current_scroll_task = asyncio.create_task(
