@@ -1,6 +1,7 @@
 import waveshare_lcd
 import text_renderer
 import asyncio
+import time
 from fastapi import FastAPI, BackgroundTasks
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -20,7 +21,10 @@ class DisplayText(BaseModel):
 current_scroll_task = None
 
 async def scroll_text(text: str, text_color: str = "#ffffff", bg_color: str = "#000000"):
-    """Scroll text vertically like Star Wars credits on the graphical LCD with pre-rendered image"""
+    """Scroll text vertically like Star Wars credits on the graphical LCD with pre-rendered image.
+    
+    Auto-stops after 5 minutes.
+    """
     try:
         # Configuration for the display (already in landscape: 320x240)
         DISPLAY_WIDTH = 320  # pixels (landscape mode)
@@ -29,6 +33,7 @@ async def scroll_text(text: str, text_color: str = "#ffffff", bg_color: str = "#
         LINE_SPACING = 6
         SCROLL_SPEED = 3
         FRAME_DELAY = 0.01
+        MAX_SCROLL_TIME = 5 * 60  # 5 minutes in seconds
         # Note: MAX_CHARS_PER_LINE is a reference value. Actual wrapping uses pixel width
         # to properly handle emoji (which take ~3x the width of regular characters).
         # See text_renderer.TEXT_MARGIN_PX constant to adjust margins for emoji.
@@ -53,8 +58,16 @@ async def scroll_text(text: str, text_color: str = "#ffffff", bg_color: str = "#
         
         # SCROLL: Loop through the pre-rendered image
         y_position = -DISPLAY_HEIGHT  # Start with text below screen
+        start_time = time.time()
         
         while True:
+            # Check if 5 minutes have elapsed
+            elapsed_time = time.time() - start_time
+            if elapsed_time > MAX_SCROLL_TIME:
+                # Stop scrolling and clear display
+                waveshare_lcd.clear(bg_color=bg_color)
+                break
+            
             # Create display frame by cropping the tall image
             frame = text_renderer.create_scroll_frame(
                 full_image=full_image,
