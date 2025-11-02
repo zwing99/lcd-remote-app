@@ -34,9 +34,13 @@ async def scroll_text(text: str, text_color: str = "#ffffff", bg_color: str = "#
         # See text_renderer.TEXT_MARGIN_PX constant to adjust margins for emoji.
         MAX_CHARS_PER_LINE = 18
         
+        # Add decorative dashes before and after text
+        separator_line = "-" * 28
+        decorated_text = f"{separator_line}\n{text}\n{separator_line}"
+        
         # PRE-RENDER: Create one tall image with all the text using text_renderer module
         full_image = text_renderer.create_scrollable_text_image(
-            text=text,
+            text=decorated_text,
             display_width=DISPLAY_WIDTH,
             font_size=FONT_SIZE,
             line_spacing=LINE_SPACING,
@@ -67,7 +71,7 @@ async def scroll_text(text: str, text_color: str = "#ffffff", bg_color: str = "#
             y_position += SCROLL_SPEED
             
             # Loop back when text has scrolled off completely
-            if y_position >= total_text_height + DISPLAY_HEIGHT:
+            if y_position >= total_text_height:
                 y_position = -DISPLAY_HEIGHT
             
             await asyncio.sleep(FRAME_DELAY)
